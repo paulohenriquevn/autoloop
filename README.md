@@ -1,4 +1,4 @@
-# theo-code autoresearch
+# autoloop
 
 Autonomous evolution loop for [theo-code](https://github.com/usetheodev/theo-code), an AI coding assistant built in Rust. Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) pattern: an AI agent runs overnight making incremental improvements, evaluating each change against an immutable harness, and keeping or discarding based on a composite score.
 
@@ -6,7 +6,7 @@ Autonomous evolution loop for [theo-code](https://github.com/usetheodev/theo-cod
 
 An AI agent (Claude Code) reads `theo-program.md`, makes a small code change to the theo-code repo, runs `theo-evaluate.sh`, and decides: score went up? Keep. Score went down? Revert. Repeat forever.
 
-The key difference from the original autoresearch (which evolves a single `train.py` against `val_bpb`): this system evaluates a **Rust workspace with 11 crates** against a **dual-layer score** covering both workspace hygiene and harness engineering maturity.
+The system evaluates a **Rust workspace with 11 crates** against a **dual-layer score** covering both workspace hygiene and harness engineering maturity.
 
 ```
 LOOP FOREVER:
@@ -67,26 +67,8 @@ cd /path/to/theo-code
 git checkout -b autoresearch/apr16
 
 # 3. Start Claude Code and point it to the instructions
-# Prompt: "Read /path/to/autoresearch/theo-program.md and kick off a new experiment"
+# Prompt: "Read /path/to/autoloop/theo-program.md and kick off a new experiment"
 ```
-
-## Baseline (2026-04-16)
-
-```
-score:              52.454
-l1_score:           90.775
-l2_score:           14.133
-compile_crates:     12/13
-tests_passed:       2453
-clippy_warnings:    543
-unwrap_count:       1265
-structural_tests:   0
-boundary_tests:     5
-doc_artifacts:      0/5
-dead_code_attrs:    12
-```
-
-47.5 points of headroom. At ~3 min/experiment, expect ~160 experiments in 8 hours.
 
 ## Design principles
 
