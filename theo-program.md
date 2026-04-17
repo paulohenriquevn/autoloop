@@ -17,10 +17,28 @@ To set up a new experiment, work with the user to:
    - This file (`theo-program.md`) — your instructions.
 4. **Verify evaluation harness**: Run the eval and confirm it produces a dual-layer metrics block:
    ```
-   bash /home/paulo/Projetos/usetheo/autoresearch/theo-evaluate.sh /home/paulo/Projetos/usetheo/theo-code
+   bash /home/paulo/Projetos/usetheo/autoloop/theo-evaluate.sh /home/paulo/Projetos/usetheo/theo-code
    ```
 5. **Initialize results.tsv** with the header row if it doesn't exist.
-6. **Confirm and go**.
+6. **Initialize progress.md** if it doesn't exist.
+7. **Confirm and go**.
+
+## Session Bootstrap Sequence
+
+Every session (including the first) starts with this fixed sequence. Do NOT skip steps.
+
+```
+1. pwd + git branch          → Confirm repo and branch
+2. git log --oneline -10     → Understand recent state
+3. Read progress.md          → Where did the last session stop?
+4. Read results.tsv (tail)   → What's the current score?
+5. Read feature_list.json    → What's the next pending feature?
+6. Run baseline eval         → Confirm actual score matches expected
+7. Determine phase           → STABILIZE / SCAFFOLD / FORTIFY / POLISH / MAINTAIN
+8. Begin experiment loop     → Pick feature, start working
+```
+
+**Why this sequence matters**: Each new session begins with no memory of what came before. This bootstrap ensures the agent quickly understands the full state without guessing.
 
 ## Dual-Layer Score
 
@@ -61,16 +79,41 @@ The evaluation produces **score = (L1 + L2) / 2** where:
 - Delete existing test functions
 - Change the evaluation score formula
 
-## Strategy: 4 Phases
+## Guardrails
 
-The experiment progresses through 4 phases. Check your current eval output to determine which phase you're in.
+See `guardrails.md` for full details. Key rules enforced during experiments:
+
+### Circuit Breakers
+- **G6**: Max 3 attempts per idea. Failed 3×? Skip to next feature.
+- **G8**: Zero tolerance for test regression. `tests_failed > 0` = immediate revert.
+- **G9**: Plateau detection. 3 same-score experiments = switch crate/feature.
+- **G10**: Max 200 lines changed per experiment.
+- **G11**: 5 consecutive reverts = re-evaluate strategy entirely.
+
+### Crate Work Order (leaf-first)
+Changes to leaf crates minimize rebuild cascading. Always prefer:
+```
+Level 0: theo-domain (CAUTION: rebuilds everything)
+Level 1: theo-governance, theo-api-contracts
+Level 2: theo-engine-parser
+Level 3: theo-engine-graph
+Level 4: theo-engine-retrieval
+Level 5: theo-tooling, theo-infra-llm, theo-infra-auth
+Level 6: theo-agent-runtime
+Level 7: theo-application
+Level 8: theo-cli, theo-marklive
+```
+
+## Strategy: 5 Phases
+
+The experiment progresses through 5 phases. Check your current eval output to determine which phase you're in.
 
 ### Phase 1: STABILIZE (while l1_score < 95)
 
 Focus exclusively on Layer 1. Get the workspace clean.
 
 **Priority order:**
-1. Fix theo-application compile errors (26 errors in test target)
+1. Fix theo-application compile errors (if any)
 2. Fix cargo warnings (unused imports, dead code warnings)
 3. Fix any failing tests
 4. Add tests to undercovered crates (api-contracts, governance, engine-graph)
@@ -107,13 +150,41 @@ Deep Layer 2 work. This is the bulk of the overnight run.
 
 **Exit condition:** l2_score ≥ 60
 
-### Phase 4: POLISH (score plateau)
+### Phase 4: POLISH (score still improving)
 
-When score stops improving easily, look for remaining opportunities:
+When the main metrics are solid, look for remaining opportunities:
 - Re-read feature_list.json for uncompleted items
 - Add deeper tests to any crate with <50 tests
 - Look at theo-architecture.md for score opportunity table
 - Try combining near-miss ideas from previous experiments
+
+**Exit condition:** 5+ experiments with no score improvement
+
+### Phase 5: MAINTAIN (continuous)
+
+Garbage collection and sustained evolution:
+- Update QUALITY_SCORE.md with current metrics
+- Scan for new patterns (new unwraps, new warnings)
+- Re-read feature_list.json for remaining work
+- Keep score stable — any regression is priority 0
+
+**Exit condition:** Human interruption
+
+## Failure Taxonomy
+
+Every discarded experiment must be classified with exactly one failure code:
+
+| Code | Meaning | Action |
+|---|---|---|
+| `COMPILE_ERROR` | Code doesn't compile | Fix or revert. Max 3 attempts per idea. |
+| `TEST_REGRESSION` | Tests that passed now fail | Revert immediately. Try different approach. |
+| `CLIPPY_REGRESSION` | More clippy warnings than before | Usually easy fix — read the clippy message. |
+| `UNWRAP_REGRESSION` | Added unwrap() accidentally | Revert and check your diff. |
+| `SCORE_PLATEAU` | Score didn't change | Switch to different feature or crate. |
+| `SCORE_DROP` | Score decreased | Revert. Analyze which metric dropped. |
+| `EVAL_CRASH` | Evaluation produced no output | Check eval.log. Usually a timeout or build error. |
+| `CONTEXT_EXHAUSTION` | Context window full | Commit progress, update progress.md, start fresh. |
+| `BUDGET_EXCEEDED` | Max time/attempts reached | Stop. Log final state. |
 
 ## Output format
 
@@ -147,52 +218,62 @@ Extract key metrics:
 grep "^score:\|^l1_score:\|^l2_score:\|^compile_crates:\|^tests_passed:\|^clippy_warnings:\|^unwrap_count:" eval.log
 ```
 
-## Logging results
+## Logging
 
-Log every experiment to `results.tsv` (tab-separated, NOT committed to git).
+### results.tsv
+Log every experiment (tab-separated, NOT committed to git).
 
-Header and columns:
 ```
 commit	score	l1_score	l2_score	compile_crates	tests_passed	clippy_warnings	unwrap_count	status	description
 ```
 
-Example:
+### experiment_traces.jsonl
+Structured trace for each experiment (NOT committed to git):
+
+```json
+{"timestamp":"2026-04-17T10:30:00Z","commit":"a1b2c3d","phase":"STABILIZE","feature_id":"fix-cargo-warnings","score_before":53.830,"score_after":55.100,"delta":1.270,"status":"keep","failure_reason":null,"files_changed":3,"lines_changed":12,"duration_secs":240,"crate":"theo-engine-retrieval"}
 ```
-a1b2c3d	52.454	90.775	14.133	12/13	2453	543	1265	keep	baseline
-b2c3d4e	53.100	93.850	12.350	13/13	2453	543	1265	keep	fix theo-application compile errors
-c3d4e5f	55.500	93.850	17.150	13/13	2453	543	1265	keep	create clippy.toml and AGENTS.md
+
+### progress.md
+Session continuity file. Updated after every experiment. Format:
+
+```markdown
+## Last Update: 2026-04-17 10:30 UTC
+
+**Phase**: STABILIZE
+**Score**: 55.100 (L1=96.0, L2=14.2)
+**Experiments**: 5 total, 3 kept, 2 discarded
+
+### Recent
+- [keep] fix-cargo-warnings: removed unused imports in engine-retrieval (+1.27)
+- [discard] fix-cargo-warnings: removed EXCERPT_MAX_CHARS constant (COMPILE_ERROR)
+- [keep] fix-cargo-warnings: removed unused mut in context_assembler (+0.15)
+
+### Next Steps
+- Continue fixing cargo warnings in theo-engine-parser (13 unused imports)
+- After warnings done, move to SCAFFOLD phase
 ```
 
 ## The experiment loop
 
 LOOP FOREVER:
 
-1. Check eval output to determine current phase (Stabilize/Scaffold/Fortify/Polish).
+1. Check eval output to determine current phase (Stabilize/Scaffold/Fortify/Polish/Maintain).
 2. Read `.theo/feature_list.json` and pick the highest-priority pending feature for your phase.
 3. Make a focused code change (one logical change, typically 1-50 lines, max 200 lines).
 4. `git add -A && git commit -m "experiment: <description>"`
 5. Run evaluation:
    ```
-   bash /home/paulo/Projetos/usetheo/autoresearch/theo-evaluate.sh /home/paulo/Projetos/usetheo/theo-code > eval.log 2>&1
+   bash /home/paulo/Projetos/usetheo/autoloop/theo-evaluate.sh /home/paulo/Projetos/usetheo/theo-code > eval.log 2>&1
    ```
 6. Read results: `grep "^score:\|^l1_score:\|^l2_score:" eval.log`
 7. If grep is empty → evaluation crashed. `tail -n 50 eval.log` to diagnose.
-8. Record results in results.tsv.
-9. If score improved (higher) → keep, advance the branch.
-10. If score equal or worse → `git reset --hard HEAD~1`.
+8. Record results in results.tsv and experiment_traces.jsonl.
+9. If score improved (higher) → keep, advance the branch, update progress.md.
+10. If score equal or worse → `git reset --hard HEAD~1`, log with failure code.
 11. If a feature is now complete, update its status to `"done"` in feature_list.json and commit.
-
-## Failure taxonomy
-
-| Failure | Action |
-|---------|--------|
-| COMPILE_ERROR | Fix or revert. Max 3 attempts per idea. |
-| TEST_REGRESSION | Revert immediately. Try different approach. |
-| CLIPPY_REGRESSION | Usually easy fix — read the clippy message. |
-| UNWRAP_REGRESSION | You accidentally added unwrap(). Revert and check. |
-| SCORE_PLATEAU | Switch to a different feature or crate. |
-| CONTEXT_EXHAUSTION | Summarize findings, commit progress, start fresh. |
-| EVAL_CRASH | Check eval.log. Usually a timeout or build error. |
+12. Check guardrails (G6, G9, G11). If triggered, adjust strategy.
+13. Every 10 keeps: run garbage collection (update QUALITY_SCORE.md, trim progress.md).
 
 ## Simplicity criterion
 
@@ -219,8 +300,21 @@ crates/theo-tooling/src/            — 40+ tools (144 tests)
 crates/theo-infra-llm/src/          — 25 LLM providers (156 tests)
 crates/theo-governance/src/         — sandbox, policy (41 tests)
 crates/theo-governance/tests/       — boundary_test.rs (5 tests), structural_hygiene.rs (create here)
-crates/theo-application/src/        — use cases (58 tests, 26 COMPILE ERRORS)
+crates/theo-application/src/        — use cases (58 tests)
 crates/theo-infra-auth/src/         — auth (87 tests)
 crates/theo-api-contracts/src/      — DTOs (0 tests)
 apps/theo-cli/src/                  — CLI (package: "theo")
 ```
+
+## References
+
+This approach combines evidence from:
+- [Karpathy's autoresearch](https://github.com/karpathy/autoresearch) — autonomous modify-evaluate-keep/discard loop
+- [Anthropic's effective harnesses](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) — feature lists, incremental progress, session continuity
+- [Harness engineering](https://martinfowler.com/articles/harness-engineering.html) (Böckeler/Fowler) — feedforward guides + feedback sensors
+- [OpenAI's harness engineering](https://openai.com/index/harness-engineering/) — repo knowledge as system of record, garbage collection
+- [VeRO](https://arxiv.org/abs/2602.22480) (Scale AI) — versioned evaluation harness for agent optimization
+- [OpenDev](https://arxiv.org/abs/2603.05344) (Bui) — defense-in-depth, context engineering, system reminders
+- [NLAHs](https://arxiv.org/abs/2603.25723) (Pan et al.) — contracts, failure taxonomy, stage structure
+- [ProjDevBench](https://arxiv.org/abs/2602.01655) (Lu et al.) — dual evaluation, specification compliance
+- [llvm-autofix](https://arxiv.org/abs/2603.20075) (Zheng et al.) — domain-specific harness tooling

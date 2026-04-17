@@ -23,11 +23,18 @@ LOOP FOREVER:
 | File | Purpose | Who edits |
 |------|---------|-----------|
 | `theo-evaluate.sh` | Immutable evaluation harness. Runs cargo build + test + clippy, outputs score 0-100. | **Nobody** (ground truth) |
-| `theo-program.md` | Agent instructions. Setup, experiment loop, 4-phase strategy, failure taxonomy. | **Human** (iterate on strategy) |
+| `theo-program.md` | Agent instructions. Setup, experiment loop, 5-phase strategy, failure taxonomy, guardrails. | **Human** (iterate on strategy) |
 | `theo-architecture.md` | Complete architecture map of theo-code. Components, flows, state machines, known issues. | **Human** (update when architecture changes) |
 | `theo-init.sh` | One-time setup. Verifies toolchain, warms cache, runs baseline. | **Human** |
+| `guardrails.md` | 15 guardrails in 3 layers: immutable limits, circuit breakers, observability. | **Human** |
+| `metrics.md` | All metrics: product (score), process (velocity, success rate), harness (coverage). | **Human** |
+| `flows.md` | 5 operational flows: bootstrap, experiment loop, phase transition, failure recovery, crate order. | **Human** |
+| `roadmap.md` | Evidence-based roadmap: 6 phases from STABILIZE to MAINTAIN. | **Human** |
+| `CHANGELOG.md` | All notable changes to autoloop. | **Human** |
 | `.theo/feature_list.json` | 20 prioritized features across Layer 1 and Layer 2. | **Agent** (updates status to done) |
 | `results.tsv` | Permanent log of all experiments. Untracked by git. | **Agent** |
+| `progress.md` | Session continuity file. Where did the last session stop? | **Agent** |
+| `experiment_traces.jsonl` | Structured trace per experiment (JSONL). Untracked by git. | **Agent** |
 
 ## Dual-layer score
 
@@ -47,14 +54,15 @@ LOOP FOREVER:
 - Dead code hygiene (15 pts)
 - Boundary test count (15 pts, capped at 15)
 
-## 4-phase strategy
+## 5-phase strategy
 
 The agent progresses automatically:
 
 1. **STABILIZE** (L1 < 95): Fix compilation, warnings, failing tests
 2. **SCAFFOLD** (doc_artifacts < 5/5): Create clippy.toml, AGENTS.md, QUALITY_RULES.md, QUALITY_SCORE.md, structural_hygiene.rs
 3. **FORTIFY** (L2 < 60): Clippy fixes, unwrap removal, expand structural + boundary tests
-4. **POLISH** (plateau): Deeper improvements, test coverage, remaining features
+4. **POLISH** (score improving): Deeper improvements, test coverage, remaining features
+5. **MAINTAIN** (continuous): Garbage collection, dashboard updates, drift detection
 
 ## Quick start
 
