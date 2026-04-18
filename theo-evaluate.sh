@@ -16,7 +16,7 @@
 #   10: cargo warning penalty
 #
 # Layer 2 — Harness Maturity (100 raw pts):
-#   20: clippy cleanliness (1 - clippy_warnings/200)
+#   20: clippy cleanliness (1 - clippy_warnings/600)
 #   20: unwrap density (1 - unwrap_count/1500)
 #   15: structural test count (capped at 30)
 #   15: doc artifacts presence (5 artifacts × 3 pts each)
@@ -24,14 +24,32 @@
 #   15: boundary test count (capped at 15)
 # =============================================================================
 
+set -euo pipefail
+
 THEO_DIR="${1:?Usage: bash theo-evaluate.sh /path/to/theo-code}"
 THEO_DIR="$(cd "$THEO_DIR" && pwd)"
+
+# --- Dependency check ---
+command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 not found. Install Python 3.6+."; exit 1; }
+command -v cargo >/dev/null 2>&1 || { echo "ERROR: cargo not found. Install via rustup."; exit 1; }
+
+# --- Integrity self-check ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/theo-evaluate.sha256" ]; then
+    (cd "$SCRIPT_DIR" && sha256sum -c theo-evaluate.sha256 --quiet 2>/dev/null) || {
+        echo "CRITICAL: theo-evaluate.sh has been modified! Aborting."
+        echo "Expected checksum does not match."
+        exit 1
+    }
+fi
 
 CRATES="theo-domain theo-engine-graph theo-engine-retrieval theo-governance theo-engine-parser theo-tooling theo-infra-llm theo-agent-runtime theo-infra-auth theo-api-contracts theo-application theo theo-marklive"
 TOTAL_CRATES=13
 PER_CRATE_TIMEOUT=300
 
 TMPDIR_EVAL=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_EVAL"' EXIT INT TERM
+
 cd "$THEO_DIR"
 
 # =============================================================================
@@ -42,19 +60,21 @@ compile_ok=0
 total_warnings=0
 compile_start=$(date +%s%N)
 
+# Track which crates failed to compile
+declare -A compile_failed
+
 for crate in $CRATES; do
     errlog="$TMPDIR_EVAL/cc_${crate}.err"
-    timeout "$PER_CRATE_TIMEOUT" cargo test -p "$crate" --no-run 1>/dev/null 2>"$errlog"
-    rc=$?
-    if [ "$rc" -eq 0 ]; then
+    if timeout "$PER_CRATE_TIMEOUT" cargo test -p "$crate" --no-run 2>"$errlog" 1>/dev/null; then
         compile_ok=$((compile_ok + 1))
+    else
+        compile_failed[$crate]=1
     fi
-    cw=$(grep -c "^warning: " "$errlog" 2>/dev/null || true)
-    summaries=$(grep -c "^warning: \`" "$errlog" 2>/dev/null || true)
+    cw=$(grep -c "^warning: " "$errlog" 2>/dev/null || echo 0)
+    summaries=$(grep -c "^warning: \`" "$errlog" 2>/dev/null || echo 0)
     cw=$((cw - summaries))
-    if [ "$cw" -gt 0 ] 2>/dev/null; then
-        total_warnings=$((total_warnings + cw))
-    fi
+    if [ "$cw" -lt 0 ]; then cw=0; fi
+    total_warnings=$((total_warnings + cw))
 done
 
 compile_end=$(date +%s%N)
@@ -70,13 +90,13 @@ tests_ignored=0
 test_start=$(date +%s%N)
 
 for crate in $CRATES; do
-    errlog="$TMPDIR_EVAL/cc_${crate}.err"
-    if grep -q "^error" "$errlog" 2>/dev/null; then
+    # Skip crates that failed to compile (including timeouts)
+    if [[ -v "compile_failed[$crate]" ]]; then
         continue
     fi
 
     test_log="$TMPDIR_EVAL/test_${crate}.log"
-    timeout "$PER_CRATE_TIMEOUT" cargo test -p "$crate" --no-fail-fast 2>&1 > "$test_log" || true
+    timeout "$PER_CRATE_TIMEOUT" cargo test -p "$crate" --no-fail-fast > "$test_log" 2>&1 || true
 
     while IFS= read -r line; do
         if [[ "$line" =~ ([0-9]+)\ passed ]]; then
@@ -103,13 +123,19 @@ l2_start=$(date +%s%N)
 # 3a. Clippy warnings (workspace-wide, exclude desktop)
 clippy_log="$TMPDIR_EVAL/clippy.log"
 timeout 300 cargo clippy --workspace --exclude theo-code-desktop 2>"$clippy_log" 1>/dev/null || true
-clippy_warnings=$(grep -c "^warning: " "$clippy_log" 2>/dev/null || true)
-clippy_summaries=$(grep -c "^warning: \`" "$clippy_log" 2>/dev/null || true)
+clippy_warnings=$(grep -c "^warning: " "$clippy_log" 2>/dev/null || echo 0)
+clippy_summaries=$(grep -c "^warning: \`" "$clippy_log" 2>/dev/null || echo 0)
 clippy_warnings=$((clippy_warnings - clippy_summaries))
 if [ "$clippy_warnings" -lt 0 ]; then clippy_warnings=0; fi
 
-# 3b. Unwrap count in production code (exclude test files and test modules)
-unwrap_count=$(grep -r "\.unwrap()" crates/*/src/ --include="*.rs" 2>/dev/null | grep -v "/tests/" | grep -v "_test\.rs" | wc -l || echo 0)
+# 3b. Unwrap count in production code (exclude test files, test modules, and apps/theo-benchmark)
+unwrap_count=$(grep -r "\.unwrap()" crates/*/src/ apps/theo-cli/src/ apps/theo-marklive/src/ --include="*.rs" 2>/dev/null \
+    | grep -v "/tests/" \
+    | grep -v "_test\.rs" \
+    | grep -v "#\[cfg(test)\]" \
+    | grep -v "// test" \
+    | grep -v "/// " \
+    | wc -l || echo 0)
 
 # 3c. Structural tests count (governance tests for code quality)
 structural_tests=0
@@ -133,8 +159,8 @@ if [ -f "crates/theo-governance/tests/structural_hygiene.rs" ] && [ "$structural
     doc_artifacts=$((doc_artifacts + 1))
 fi
 
-# 3f. Dead code attributes
-dead_code_attrs=$(grep -r '#\[allow(dead_code)\]' crates/*/src/ --include="*.rs" 2>/dev/null | wc -l || echo 0)
+# 3f. Dead code attributes (include apps/ in scope)
+dead_code_attrs=$(grep -r '#\[allow(dead_code)\]' crates/*/src/ apps/theo-cli/src/ apps/theo-marklive/src/ --include="*.rs" 2>/dev/null | wc -l || echo 0)
 
 l2_end=$(date +%s%N)
 l2_secs=$(python3 -c "print(f'{($l2_end - $l2_start) / 1e9:.1f}')")
@@ -145,6 +171,15 @@ l2_secs=$(python3 -c "print(f'{($l2_end - $l2_start) / 1e9:.1f}')")
 
 tests_total=$((tests_passed + tests_failed))
 test_count=$((tests_passed + tests_failed + tests_ignored))
+
+# Validate all inputs are non-negative integers before passing to Python
+for var_name in compile_ok TOTAL_CRATES tests_passed tests_total test_count total_warnings clippy_warnings unwrap_count structural_tests doc_artifacts dead_code_attrs boundary_tests; do
+    val="${!var_name}"
+    if ! [[ "$val" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: $var_name has non-integer value: $val"
+        exit 1
+    fi
+done
 
 score=$(python3 -c "
 # Layer 1 — Workspace Hygiene (100 raw pts)
@@ -159,9 +194,9 @@ l1 = l1_compile + l1_tests + l1_count + l1_warn
 
 # Layer 2 — Harness Maturity (100 raw pts)
 cw = $clippy_warnings; uw = $unwrap_count; st = $structural_tests
-da = $doc_artifacts; dc = $dead_code_attrs; bt = $boundary_tests
+da = min(5, $doc_artifacts); dc = $dead_code_attrs; bt = $boundary_tests
 
-l2_clippy     = 20.0 * max(0.0, 1.0 - cw / 200.0)
+l2_clippy     = 20.0 * max(0.0, 1.0 - cw / 600.0)
 l2_unwrap     = 20.0 * max(0.0, 1.0 - uw / 1500.0)
 l2_structural = 15.0 * min(1.0, st / 30.0)
 l2_docs       = 3.0 * da  # 5 artifacts × 3 pts = 15 max
@@ -204,6 +239,3 @@ echo "compile_secs:       ${compile_secs}"
 echo "test_secs:          ${test_secs}"
 echo "l2_secs:            ${l2_secs}"
 echo "---"
-
-# Cleanup
-rm -rf "$TMPDIR_EVAL"

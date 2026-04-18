@@ -6,24 +6,14 @@ Roadmap baseado em evidências de 9 fontes de pesquisa (papers, artigos técnico
 
 ## Estado Atual (Baseline 2026-04-17)
 
+Veja `metrics.md` para definições completas das fórmulas e baseline.
+
 ```
 score:           53.830
 L1 (hygiene):    94.100 / 100
 L2 (maturity):   13.560 / 100
 headroom:        46.170 pts
 ```
-
-| Métrica | Valor | Alvo | Gap |
-|---|---|---|---|
-| compile_crates | 13/13 | 13/13 | -- |
-| tests_passed | 2561 | 2561+ | -- |
-| cargo_warnings | 59 | 0 | -59 |
-| clippy_warnings | 551 | 0 | -551 |
-| unwrap_count | 1308 | ≤300 | -1008 |
-| structural_tests | 0 | 30 | +30 |
-| boundary_tests | 5 | 15 | +10 |
-| doc_artifacts | 0/5 | 5/5 | +5 |
-| dead_code_attrs | 12 | 0 | -12 |
 
 ---
 
@@ -37,8 +27,8 @@ headroom:        46.170 pts
 - [x] `metrics.md` — Métricas de produto, processo e harness
 - [x] `flows.md` — 5 fluxos operacionais
 - [x] `roadmap.md` — Este documento
-- [ ] Refinar `theo-program.md` — Incorporar bootstrap sequence, structured tracing, failure taxonomy
-- [ ] Criar `CHANGELOG.md`
+- [x] `theo-program.md` — Refinado com bootstrap sequence, structured tracing, failure taxonomy
+- [x] `CHANGELOG.md` — Registro de mudanças
 
 ---
 
@@ -53,7 +43,7 @@ headroom:        46.170 pts
 
 | # | Tarefa | Feature ID | Impacto L1 | Esforço |
 |---|---|---|---|---|
-| 1 | Fix 59 cargo warnings | `fix-cargo-warnings` | +5.9 pts | Fácil |
+| 1 | Fix 59 cargo warnings | `fix-cargo-warnings` | ~+4 pts | Fácil |
 | 2 | Adicionar testes a api-contracts | `add-api-contracts-tests` | +0.04 pts | Fácil |
 | 3 | Adicionar testes a governance | `add-governance-tests` | +0.08 pts | Fácil |
 | 4 | Adicionar testes a engine-graph | `add-graph-engine-tests` | +0.04 pts | Fácil |
@@ -77,25 +67,25 @@ headroom:        46.170 pts
 | # | Artifact | Feature ID | Impacto L2 | Detalhes |
 |---|---|---|---|---|
 | 1 | `clippy.toml` | `create-clippy-toml` | +3.0 pts | Thresholds: too-many-arguments=10, type-complexity=300 |
-| 2 | `.theo/agents.md` | `create-agents-md` | +3.0 pts | Mapa ~100 linhas. Crate→responsabilidade, como testar, o que não tocar |
-| 3 | `.theo/rules.md` | `create-quality-rules-md` | +3.0 pts | Regras mecânicas: no unwrap, no dead_code, clippy clean |
-| 4 | `.theo/quality_score.md` | `create-quality-score-md` | +3.0 pts | Dashboard per-crate com métricas atuais |
+| 2 | `.theo/AGENTS.md` | `create-agents-md` | +3.0 pts | Mapa ~100 linhas. Crate→responsabilidade, como testar, o que não tocar |
+| 3 | `.theo/QUALITY_RULES.md` | `create-quality-rules-md` | +3.0 pts | Regras mecânicas: no unwrap, no dead_code, clippy clean |
+| 4 | `.theo/QUALITY_SCORE.md` | `create-quality-score-md` | +3.0 pts | Dashboard per-crate com métricas atuais |
 | 5 | `structural_hygiene.rs` | `create-structural-hygiene-tests` | +3.0 pts | 10+ testes: no println, file size, no circular deps |
 
 ### Design Guidelines (por artifact)
 
-**agents.md** — Mapa, não manual. Inspirado no artigo OpenAI:
+**AGENTS.md** — Mapa, não manual. Inspirado no artigo OpenAI:
 - Listar todos os 13 crates com responsabilidade em 1 linha
 - Indicar como testar cada um (`cargo test -p <name>`)
 - Indicar quais crates não tocar (benchmark, desktop)
 - Links para docs mais profundos
 
-**rules.md** — Golden principles codificadas. Inspirado no artigo OpenAI:
+**QUALITY_RULES.md** — Golden principles codificadas. Inspirado no artigo OpenAI:
 - Cada regra é mecânica e verificável
 - Formato: Regra → Como verificar → O que fazer se violada
 - Exemplos: "no unwrap() in production" → `grep -r '.unwrap()' crates/*/src/` → "use ? or match"
 
-**quality_score.md** — Dashboard vivo. Inspirado no artigo OpenAI:
+**QUALITY_SCORE.md** — Dashboard vivo. Inspirado no artigo OpenAI:
 - Tabela per-crate: compiles, tests, warnings, clippy, unwraps
 - Atualizado pelo agente a cada fase completa
 - Grades: A (limpo), B (minor issues), C (needs work), D (failing)
@@ -120,7 +110,7 @@ headroom:        46.170 pts
 |---|---|---|---|---|
 | 1 | Boundary tests 5→15 | `expand-boundary-tests` | +10.0 pts | Adicionar: circular deps, benchmark isolation, engine boundaries |
 | 2 | Structural tests 10→30 | `expand-structural-tests` | +10.0 pts | File size, unwrap-free zones, doc comments, no process::exit |
-| 3 | Clippy leaf crates | `clippy-fix-leaf-crates` | +variável | theo-domain, governance, api-contracts |
+| 3 | Clippy leaf crates | `clippy-fix-leaf-crates` | +variável | theo-cli, theo-marklive, then inward |
 | 4 | Clippy engines | `clippy-fix-engines` | +variável | parser, graph, retrieval |
 | 5 | Clippy runtime/infra | `clippy-fix-runtime-infra` | +variável | agent-runtime, infra-llm, tooling |
 | 6 | Unwrap leaf crates | `unwrap-removal-leaf-crates` | +variável | ? operator, match, explicit errors |
@@ -153,11 +143,11 @@ headroom:        46.170 pts
 ## Fase 5: MAINTAIN
 
 **Condição de entrada**: Score parou de melhorar
-**Condição de saída**: Nunca (roda até interrupção humana)
+**Condição de saída**: Human interruption ou budget exceeded (200 experiments)
 **Evidência**: OpenAI — "technical debt is like a high-interest loan"
 
 ### Tarefas Cíclicas
-1. Garbage collection: atualizar quality_score.md, limpar progress.md
+1. Garbage collection: atualizar QUALITY_SCORE.md, limpar progress.md
 2. Scan por novos patterns problemáticos (novos unwraps, novos warnings)
 3. Re-ler feature_list.json para features não completadas
 4. Re-ler theo-architecture.md para novas oportunidades

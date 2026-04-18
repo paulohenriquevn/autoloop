@@ -2,17 +2,20 @@
 
 Proteção em 3 camadas para o agente autônomo. Baseado em defense-in-depth (OpenDev), feedforward/feedback (Böckeler/Fowler), e budget enforcement (VeRO).
 
+**Enforcement status:** A Camada 1 tem enforcement parcial via filesystem permissions (chmod 444 no harness) e SHA-256 self-check. Camadas 2 e 3 dependem de compliance do agente com as instruções. `theo-init.sh` configura a verificação de integridade automaticamente.
+
 ---
 
 ## Camada 1 — Limites Imutáveis
 
-Regras hardcoded no harness e no program. Nunca são alteradas durante experimentos.
+Regras que protegem a integridade do ground truth. Enforcement via file permissions + SHA-256 check.
 
 ### G1: Harness Imutável
-`theo-evaluate.sh` é o ground truth. O agente **nunca** modifica este arquivo. Qualquer mudança no score vem exclusivamente de mudanças no código do theo-code.
+`theo-evaluate.sh` é o ground truth. O agente **nunca** modifica este arquivo.
+**Enforcement:** `chmod 444` aplicado após setup. SHA-256 verificado automaticamente no início de cada eval run. Se o hash não bater, a avaliação aborta com erro.
 
 ### G2: Score Monotônico
-Uma mudança só é mantida se `score_after > score_before`. Score igual ou menor = revert imediato via `git reset --hard HEAD~1`.
+Uma mudança só é mantida se `score_after > score_before`. Score igual ou menor = revert imediato via `git reset --hard "$BEFORE_SHA"` (SHA capturado antes do commit, não HEAD~1).
 
 ### G3: Scope de Arquivos
 
@@ -23,6 +26,7 @@ Uma mudança só é mantida se `score_after > score_before`. Score igual ou meno
 - `apps/theo-marklive/src/**/*.rs`
 - `clippy.toml` (criar)
 - `.theo/AGENTS.md`, `.theo/QUALITY_RULES.md`, `.theo/QUALITY_SCORE.md` (criar)
+- `.theo/feature_list.json` (atualizar status)
 
 **Não pode modificar:**
 - `theo-evaluate.sh`
@@ -30,6 +34,8 @@ Uma mudança só é mantida se `score_after > score_before`. Score igual ou meno
 - `apps/theo-desktop/**`
 - `.claude/CLAUDE.md`
 - `Cargo.toml` (workspace dependencies)
+
+**Enforcement:** `git add` no experiment loop usa lista explícita de paths permitidos (não `git add -A`).
 
 ### G4: Sem Dependências Novas
 Proibido adicionar crates a `[workspace.dependencies]`. Proibido adicionar novos workspace members. O agente trabalha exclusivamente com o que já existe.
@@ -41,13 +47,14 @@ Funções `#[test]` existentes são intocáveis. O agente pode adicionar testes,
 
 ## Camada 2 — Circuit Breakers
 
-Regras dinâmicas que previnem loops destrutivos e desperdício de recursos.
+Regras dinâmicas que previnem loops destrutivos e desperdício de recursos. Enforcement via instruções no `theo-program.md`.
 
 ### G6: Max 3 Tentativas por Ideia
 Se uma mudança falha 3 vezes consecutivas (compile error, test regression, ou score drop), o agente **deve** abandonar essa abordagem e pular para a próxima feature no `feature_list.json`.
 
 ### G7: Budget de Compilação
-Se `cargo test -p <crate> --no-run` leva mais de 5 minutos para um crate individual ou mais de 10 minutos para o workspace completo, o experimento é abortado e revertido.
+Se `cargo test -p <crate> --no-run` leva mais de 5 minutos (PER_CRATE_TIMEOUT=300 em `theo-evaluate.sh`), o crate é marcado como falha de compilação e pulado na fase de testes.
+**Enforcement:** `timeout` command no eval harness.
 
 ### G8: Zero Tolerância a Regressão de Testes
 Se `tests_failed > 0` no eval output, revert imediato. Sem exceção. Sem retry.
@@ -58,6 +65,8 @@ Se 3 experimentos consecutivos resultam no **mesmo score** (delta = 0), o agente
 2. Se já trocou, trocar de fase (ex: de FORTIFY para POLISH)
 3. Se já esgotou, re-ler `feature_list.json` e `theo-architecture.md`
 
+**Exceção MAINTAIN:** Na fase MAINTAIN, plateau é esperado. G9 só ativa se há features pendentes em `feature_list.json`.
+
 ### G10: Limite de Escopo por Experimento
 Cada experimento deve ser **focado**: tipicamente 1-50 linhas alteradas, máximo absoluto 200 linhas. Se a mudança é maior, deve ser quebrada em múltiplos experimentos sequenciais.
 
@@ -66,6 +75,7 @@ Se o agente faz mais de 5 reverts consecutivos sem nenhum keep, deve pausar e:
 1. Re-ler a arquitetura (`theo-architecture.md`)
 2. Re-avaliar qual fase está
 3. Escolher uma abordagem fundamentalmente diferente
+4. Se o padrão persistir após a pausa, considerar parar o loop
 
 ---
 
@@ -74,26 +84,10 @@ Se o agente faz mais de 5 reverts consecutivos sem nenhum keep, deve pausar e:
 Mecanismos que tornam o comportamento do agente auditável e diagnosticável.
 
 ### G12: Logging Obrigatório
-Todo experimento, sem exceção, deve ser logado em `results.tsv` com:
-- commit hash
-- score antes/depois
-- status (keep/discard)
-- descrição do que foi tentado
+Todo experimento, sem exceção, deve ser logado em `results.tsv` com todos os campos do header (17 colunas).
 
 ### G13: Failure Taxonomy
-Cada descarte deve ser classificado com exatamente uma das categorias:
-
-| Código | Significado | Ação |
-|---|---|---|
-| `COMPILE_ERROR` | Código não compila | Fix ou revert. Max 3 tentativas. |
-| `TEST_REGRESSION` | Testes passavam, agora falham | Revert imediato. Abordagem diferente. |
-| `CLIPPY_REGRESSION` | Mais clippy warnings que antes | Geralmente fix fácil. Ler mensagem. |
-| `UNWRAP_REGRESSION` | Adicionou unwrap() acidentalmente | Revert. Verificar mudança. |
-| `SCORE_PLATEAU` | Score não mudou | Trocar feature ou crate. |
-| `SCORE_DROP` | Score caiu | Revert. Analisar o que piorou. |
-| `EVAL_CRASH` | Avaliação crashou | Ler `eval.log`. Geralmente timeout. |
-| `CONTEXT_EXHAUSTION` | Context window esgotado | Commitar progresso, nova sessão. |
-| `BUDGET_EXCEEDED` | Tempo ou tentativas esgotados | Parar. Logar estado final. |
+Cada descarte deve ser classificado com exatamente um código de falha (ver tabela em `theo-program.md`).
 
 ### G14: Structured Tracing
 Cada experimento gera uma entrada JSONL em `experiment_traces.jsonl`:
@@ -115,11 +109,8 @@ Cada experimento gera uma entrada JSONL em `experiment_traces.jsonl`:
 }
 ```
 
-### G15: Alertas de Plateau
-Se o score não melhora por mais de 5 experimentos consecutivos (incluindo keeps com delta ≈ 0), o agente deve:
-1. Loggar um alerta explícito no `progress.md`
-2. Re-avaliar a estratégia de fase
-3. Considerar features de maior impacto
+### G15: Budget Enforcement
+O agente deve parar após 200 experimentos por sessão ou quando o operador interrompe. Se o score não melhora por mais de 10 experimentos consecutivos na fase MAINTAIN, o agente deve logar um alerta no `progress.md` e considerar parar.
 
 ---
 
