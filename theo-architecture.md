@@ -2,7 +2,7 @@
 
 Reference document for the autonomous agent. Read this to understand what you're modifying.
 
-**Project**: Theo-Code — AI coding assistant in Rust (11 crates, ~30K LOC, 2451 tests)
+**Project**: Theo-Code — AI coding assistant in Rust (11 library crates + 2 app binaries = 13 evaluated packages, ~30K LOC, 2451 tests)
 **Repo**: `/home/paulo/Projetos/usetheo/theo-code`
 
 ---

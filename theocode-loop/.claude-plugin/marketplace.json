@@ -1,0 +1,26 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "theocode-loop",
+  "version": "1.0.0",
+  "description": "Autonomous evolution loop for theo-code — researches SOTA patterns, implements them, evaluates quality, and iterates until convergence.",
+  "owner": {
+    "name": "paulohenriquevn",
+    "email": "paulohenriquevn@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "theocode-loop",
+      "description": "Autonomous evolution loop with 5-phase pipeline (Research → Implement → Hygiene Check → SOTA Evaluate → Iterate), 4 specialized agents, quality gates, and reference-driven development.",
+      "source": {
+        "source": "github",
+        "repo": "paulohenriquevn/theocode-loop"
+      },
+      "version": "1.0.0",
+      "author": {
+        "name": "Paulo (usetheo)",
+        "email": "paulohenriquevn@gmail.com"
+      },
+      "category": "development"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "theocode-loop",
+  "version": "1.0.0",
+  "description": "Autonomous evolution loop for theo-code. Researches SOTA patterns from reference repos, implements them incrementally, evaluates against a 5-dimension quality rubric, and iterates until convergence. Powered by the Autoresearch keep/discard pattern.",
+  "author": {
+    "name": "Paulo (usetheo)",
+    "email": "paulohenriquevn@gmail.com"
+  },
+  "repository": "https://github.com/paulohenriquevn/theocode-loop",
+  "license": "MIT",
+  "keywords": [
+    "theo-code",
+    "autoresearch",
+    "evolution-loop",
+    "sota",
+    "rust",
+    "ai-coding-assistant",
+    "autonomous-agents",
+    "quality-rubric"
+  ]
+}
