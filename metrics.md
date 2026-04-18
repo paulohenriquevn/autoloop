@@ -157,6 +157,53 @@ freshness = artifacts_present / 5
 
 ---
 
+## 4. SOTA Quality Rubric (Métrica Primária do Evolution Loop)
+
+No evolution loop, o score dual-layer (L1+L2) funciona como **piso de hygiene**. A métrica principal é a SOTA Quality Rubric — uma auto-avaliação do agente em 5 dimensões.
+
+Ver `sota-rubric.md` para a rubrica completa com exemplos e template.
+
+### Dimensões
+
+| Dimensão | O que mede | Score |
+|---|---|:---:|
+| Pattern Fidelity | Fidelidade ao padrão SOTA das referências | 0-3 |
+| Architectural Fit | Encaixe na arquitetura do theo-code | 0-3 |
+| Completeness | Completude para produção (edge cases, errors) | 0-3 |
+| Testability | Qualidade e cobertura dos testes | 0-3 |
+| Simplicity | Implementação mínima e focada | 0-3 |
+
+### Convergência
+```
+sota_average = (pattern_fidelity + architectural_fit + completeness + testability + simplicity) / 5
+converged = sota_average >= 2.5
+```
+
+### Relação com Hygiene Score
+```
+1. Agente implementa mudança
+2. Run theo-evaluate.sh → hygiene score
+3. Se score caiu → revert (G19 — piso absoluto)
+4. Se score mantido/subiu → SOTA rubric assessment
+5. Se SOTA média ≥ 2.5 → CONVERGED
+6. Se SOTA média < 2.5 → ITERATE (max 15 iterações — G17)
+```
+
+O hygiene score e o SOTA rubric medem coisas diferentes e complementares:
+- **Hygiene** = "o código compila, passa testes, está limpo?" (objetivo, calculado por script)
+- **SOTA** = "a implementação segue padrões de ponta das referências?" (subjetivo mas evidence-grounded via G18)
+
+### Notas sobre Reliability da Auto-Avaliação
+
+A SOTA rubric é inerentemente subjetiva — o agente julga seu próprio trabalho. Mitigações:
+
+1. **G18 (Evidence-Grounded):** Toda pontuação deve citar referência específica. Previne inflação sem base.
+2. **Hygiene floor (G19):** Mesmo com SOTA=3 em tudo, se hygiene caiu, reverte. Previne "parece bom mas quebrou algo".
+3. **Audit trail:** `evolution_assessment.md` e `evolution_log.jsonl` são auditáveis pelo humano após a sessão.
+4. **Convergence threshold (2.5):** Exige pelo menos algumas dimensões em SOTA (3), não aceita tudo "Good" (2).
+
+---
+
 ## Referências
 
 - **Dual evaluation**: ProjDevBench (Lu et al., 2026) — execution + code review scoring

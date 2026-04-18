@@ -14,7 +14,7 @@ THEO_DIR="${1:-/home/paulo/Projetos/usetheo/theo-code}"
 THEO_DIR="$(cd "$THEO_DIR" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "=== theo-code autoresearch init (dual-layer) ==="
+echo "=== theo-code evolution loop init ==="
 echo ""
 
 # 1. Verify Rust toolchain
@@ -40,26 +40,51 @@ echo ""
 # 4. Ensure .theo directory exists
 mkdir -p "$THEO_DIR/.theo"
 
-# 5. Check for feature_list.json
-if [ ! -f "$THEO_DIR/.theo/feature_list.json" ]; then
+# 5. Verify reference repos exist
+REFS_DIR="$THEO_DIR/referencias"
+if [ -d "$REFS_DIR" ]; then
+    REF_COUNT=$(ls -d "$REFS_DIR"/*/ 2>/dev/null | wc -l)
+    echo "[init] Reference repos found: $REF_COUNT in $REFS_DIR"
+    if [ "$REF_COUNT" -lt 3 ]; then
+        echo "WARNING: Only $REF_COUNT reference repos found. Recommend at least 3 for effective SOTA comparison."
+    fi
+    ls -d "$REFS_DIR"/*/ 2>/dev/null | while read -r d; do
+        echo "  - $(basename "$d")"
+    done
+else
     echo ""
-    echo "WARNING: .theo/feature_list.json not found."
-    echo "  The agent needs this file to know what features to work on."
-    echo "  Create it with prioritized features before starting an experiment."
-    echo "  See README.md for the expected format."
+    echo "WARNING: referencias/ directory not found at $REFS_DIR"
+    echo "  The agent needs reference repos to research SOTA patterns."
+    echo "  Clone reference repos into $REFS_DIR before starting an evolution session."
     echo ""
+fi
+
+# 5b. Create evolution_prompt.md template if it doesn't exist
+if [ ! -f "$THEO_DIR/.theo/evolution_prompt.md" ]; then
+    cat > "$THEO_DIR/.theo/evolution_prompt.md" << 'EVOLUTION_EOF'
+# Evolution Prompt
+
+<!-- Replace this content with the evolution mission. Examples: -->
+<!-- "Evolua o context manager para usar compaction em estágios como o OpenDev" -->
+<!-- "Implemente hybrid search com BM25 + re-ranking no retrieval engine" -->
+<!-- "Refatore o agent loop para suportar thinking/critique phases separadas" -->
+
+(awaiting evolution prompt from operator)
+EVOLUTION_EOF
+    echo "  Created .theo/evolution_prompt.md template."
 fi
 
 # 6. Add untracked files to .gitignore if needed
 if ! grep -q "^results.tsv$" "$THEO_DIR/.gitignore" 2>/dev/null; then
     echo "" >> "$THEO_DIR/.gitignore"
-    echo "# Autoresearch experiment logs" >> "$THEO_DIR/.gitignore"
+    echo "# Evolution loop logs (not committed)" >> "$THEO_DIR/.gitignore"
     echo "results.tsv" >> "$THEO_DIR/.gitignore"
     echo "eval.log" >> "$THEO_DIR/.gitignore"
     echo "eval_detail.json" >> "$THEO_DIR/.gitignore"
     echo "experiment_traces.jsonl" >> "$THEO_DIR/.gitignore"
     echo "progress.md" >> "$THEO_DIR/.gitignore"
-    echo "  Added autoresearch logs to .gitignore"
+    echo ".theo/evolution_log.jsonl" >> "$THEO_DIR/.gitignore"
+    echo "  Added evolution loop logs to .gitignore"
 fi
 
 # 7. Create results.tsv with complete dual-layer header
@@ -94,7 +119,15 @@ echo "  Generated theo-evaluate.sha256 for integrity verification."
 
 # 10. Run baseline evaluation
 echo ""
-echo "[init] Running baseline evaluation (dual-layer)..."
+# 9b. Initialize evolution_log.jsonl if it doesn't exist
+if [ ! -f "$THEO_DIR/.theo/evolution_log.jsonl" ]; then
+    touch "$THEO_DIR/.theo/evolution_log.jsonl"
+    echo "  Created .theo/evolution_log.jsonl"
+fi
+
+# 10. Run baseline evaluation
+echo ""
+echo "[init] Running baseline evaluation (hygiene floor)..."
 BASELINE_LOG=$(mktemp)
 bash "$SCRIPT_DIR/theo-evaluate.sh" "$THEO_DIR" 2>&1 | tee "$BASELINE_LOG"
 
@@ -104,12 +137,13 @@ l1=$(grep "^l1_score:" "$BASELINE_LOG" | awk '{print $2}')
 l2=$(grep "^l2_score:" "$BASELINE_LOG" | awk '{print $2}')
 rm -f "$BASELINE_LOG"
 
-echo "[init] Baseline: score=${baseline_score:-FAILED} (L1=${l1:-?}, L2=${l2:-?})"
+echo "[init] Baseline (hygiene floor): score=${baseline_score:-FAILED} (L1=${l1:-?}, L2=${l2:-?})"
 echo ""
 echo "=== Setup complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. cd $THEO_DIR"
-echo "  2. git switch -c autoresearch/<tag>"
-echo "  3. Open Claude Code and prompt:"
-echo "     'Read $SCRIPT_DIR/theo-program.md and kick off a new experiment'"
+echo "  2. git switch -c evolution/<tag>"
+echo "  3. Edit .theo/evolution_prompt.md with your evolution mission"
+echo "  4. Open Claude Code and prompt:"
+echo "     'Read $SCRIPT_DIR/theo-program.md and start the evolution loop'"

@@ -1,235 +1,282 @@
 # Autoloop Flows
 
-Fluxos operacionais do agente autônomo. Cada fluxo define entradas, saídas, decisões e ações.
+Fluxos operacionais do agente de evolução. Cada fluxo define entradas, saídas, decisões e ações.
 
 ---
 
 ## 1. Session Bootstrap Flow
 
-Executado uma vez no início de cada sessão. Inspirado na bootstrap sequence da Anthropic.
+Executado uma vez no início de cada sessão. Estabelece contexto completo antes de qualquer ação.
 
 ```
 SESSION START
   │
-  ├─ 1. pwd + git branch (confirmar repo e branch)
+  ├─ 1. pwd + git branch (confirmar repo e branch evolution/*)
   │
   ├─ 2. git log --oneline -10 (entender estado recente)
   │
   ├─ 3. Read progress.md (onde parou a última sessão)
   │     └─ Se ausente ou corrompido → ignorar, recalcular do baseline
   │
-  ├─ 4. Read results.tsv (último score conhecido)
+  ├─ 4. Read results.tsv (tail — último score de hygiene)
   │
-  ├─ 5. Read feature_list.json (próxima feature pendente)
-  │     └─ Se ausente → STOP: pedir ao operador para criar
+  ├─ 5. Read .theo/evolution_prompt.md (missão atual)
+  │     └─ Se ausente → STOP: pedir ao operador para fornecer o prompt
   │
-  ├─ 6. Run baseline eval
+  ├─ 6. Run baseline eval (piso de hygiene)
   │     bash <AUTOLOOP_DIR>/theo-evaluate.sh <THEO_CODE_DIR> > eval.log 2>&1
   │     grep "^score:" eval.log
   │
-  ├─ 7. Determine phase
-  │     ├─ L1 < 95 → STABILIZE
-  │     ├─ doc_artifacts < 5/5 → SCAFFOLD
-  │     ├─ L2 < 60 → FORTIFY
-  │     ├─ score improving (last 5 experiments had positive delta) → POLISH
-  │     └─ score plateau (5+ experiments without improvement) → MAINTAIN
+  ├─ 7. Read reference-catalog.md + sota-rubric.md
+  │     Identificar quais referências são relevantes para o prompt
   │
-  └─ 8. Begin experiment loop
+  ├─ 8. Read .theo/evolution_assessment.md (se existe — última avaliação SOTA)
+  │
+  ├─ 9. Determine phase
+  │     ├─ Sem evolution_research.md → RESEARCH
+  │     ├─ Com research mas sem assessment → IMPLEMENT
+  │     ├─ Com assessment e média < 2.5 → ITERATE
+  │     ├─ Com assessment e média ≥ 2.5 → CONVERGED (esperar novo prompt)
+  │     └─ iteration_count ≥ 15 → EVOLUTION_TIMEOUT
+  │
+  └─ 10. Begin evolution loop (ou aguardar novo prompt se CONVERGED)
 ```
 
-**Saída**: Fase atual, score atual, próxima feature a trabalhar.
+**Saída:** Fase atual, score de hygiene, score SOTA (se existe), próxima ação.
 
 ---
 
-## 2. Experiment Loop Flow
+## 2. Research Flow
 
-O loop principal. Cada iteração é um experimento atômico.
+Executado na primeira iteração e quando o agente precisa buscar novos padrões para gaps específicos.
 
 ```
-EXPERIMENT LOOP
+RESEARCH
   │
-  ├─ 1. SELECT
-  │     Read feature_list.json
-  │     Pick highest-priority pending feature for current phase
-  │     Read target files listed in feature
+  ├─ 1. PARSE PROMPT
+  │     Ler .theo/evolution_prompt.md
+  │     Identificar: subsistema alvo, crates envolvidos, tipo de mudança
+  │
+  ├─ 2. LOOKUP REFERENCES
+  │     Consultar reference-catalog.md
+  │     Selecionar max 3 repos relevantes (primários > secundários)
+  │
+  ├─ 3. READ REFERENCES (por repo, max 5 arquivos cada)
+  │     Para cada repo selecionado:
+  │     ├─ Ler README.md / CLAUDE.md (arquitetura geral)
+  │     ├─ Ler 2-3 source files relevantes ao subsistema
+  │     └─ Extrair padrões concretos:
+  │         ├─ Data structures usadas
+  │         ├─ Algoritmos / control flow
+  │         ├─ Error handling patterns
+  │         └─ Testing patterns
+  │
+  ├─ 4. DOCUMENT FINDINGS
+  │     Escrever .theo/evolution_research.md:
+  │     ├─ Padrões extraídos (com citações de arquivo)
+  │     ├─ Como cada padrão mapeia para theo-code
+  │     └─ Notas de adaptação (TS/Python → Rust)
+  │
+  ├─ 5. DEFINE CRITERIA
+  │     Escrever .theo/evolution_criteria.md:
+  │     ├─ O que "SOTA" significa para este prompt específico
+  │     ├─ Quais capacidades a referência tem que theo-code não tem
+  │     ├─ Melhoria mínima viável
+  │     └─ O que está explicitamente fora de escopo
+  │
+  └─ 6. TRANSITION → IMPLEMENT
+```
+
+**Saída:** `evolution_research.md` e `evolution_criteria.md` populados. Pronto para implementar.
+
+**Re-entry:** Quando o agente está em ITERATE e precisa buscar padrões específicos para gaps, executa apenas os passos 2-4 focados nas dimensões com score baixo.
+
+---
+
+## 3. Evolution Loop Flow
+
+O loop principal. Cada iteração é uma mudança atômica avaliada em duas camadas.
+
+```
+EVOLUTION LOOP
+  │
+  ├─ 1. PLAN
+  │     Ler .theo/evolution_research.md (padrões a aplicar)
+  │     Ler .theo/evolution_assessment.md (gaps da iteração anterior, se existe)
+  │     Decidir: qual padrão aplicar, em quais arquivos, escopo estimado
   │
   ├─ 2. IMPLEMENT
-  │     Make focused code change (1-50 lines, max 200)
-  │     One logical change per experiment
+  │     Fazer mudança focada (1-50 linhas típico, max 200)
+  │     Uma mudança lógica por iteração
   │
-  ├─ 3. COMMIT (atomic — includes feature_list.json if feature is complete)
+  ├─ 3. COMMIT (atômico)
   │     BEFORE_SHA=$(git rev-parse HEAD)
   │     git add <explicit paths only — NOT git add -A>
-  │     git commit -m "experiment: <description>"
+  │     git commit -m "evolution: <description>"
   │
-  ├─ 4. EVALUATE
+  ├─ 4. HYGIENE CHECK (piso — pass/fail)
   │     bash <AUTOLOOP_DIR>/theo-evaluate.sh <THEO_CODE_DIR> > eval.log 2>&1
   │     Extract: score, l1_score, l2_score
-  │     If grep empty → EVAL_CRASH → tail eval.log → diagnose
-  │
-  ├─ 5. DECIDE
-  │     score_after > score_before?
-  │     ├─ YES (keep)
-  │     │   Log to results.tsv: status=keep
-  │     │   Log to experiment_traces.jsonl
-  │     │   Update progress.md
-  │     │   keeps_since_gc += 1
   │     │
-  │     └─ NO (discard)
-  │         git reset --hard "$BEFORE_SHA"  ← SHA-anchored, not HEAD~1
-  │         Log to results.tsv: status=discard
-  │         Log to experiment_traces.jsonl with failure_reason
-  │         consecutive_discards += 1
+  │     ├─ Score dropped?
+  │     │   └─ YES → REVERT
+  │     │       git reset --hard "$BEFORE_SHA"
+  │     │       Log: results.tsv (status=discard), evolution_log.jsonl
+  │     │       Classify failure (COMPILE_ERROR, TEST_REGRESSION, etc.)
+  │     │       Go to GUARDRAIL CHECK
+  │     │
+  │     └─ Score maintained or improved?
+  │         └─ YES → continue to SOTA EVALUATE
+  │         Log: results.tsv (status=keep)
   │
-  ├─ 6. GUARDRAIL CHECK
-  │     ├─ consecutive_discards ≥ 5? → G11: re-evaluate strategy
-  │     ├─ same_score × 3? → G9: switch crate/feature
-  │     ├─ attempt_count ≥ 3 for same idea? → G6: skip feature
+  ├─ 5. SOTA EVALUATE (teto — rubric scoring)
+  │     Auto-avaliar nas 5 dimensões (0-3 cada):
+  │     ├─ Pattern Fidelity (citar referência específica — G18)
+  │     ├─ Architectural Fit (verificar fronteiras — theo-architecture.md)
+  │     ├─ Completeness (edge cases, error handling)
+  │     ├─ Testability (testes adicionados, cobertura)
+  │     └─ Simplicity (YAGNI check, LOC proporcionais)
+  │     │
+  │     Calcular média
+  │     Gravar .theo/evolution_assessment.md (template da rubrica)
+  │     Log: evolution_log.jsonl
+  │     │
+  │     ├─ Média ≥ 2.5?
+  │     │   └─ YES → CONVERGED
+  │     │       Update progress.md: status=CONVERGED
+  │     │       Signal success to user
+  │     │       EXIT LOOP
+  │     │
+  │     └─ Média < 2.5?
+  │         └─ Continue to ITERATE
+  │
+  ├─ 6. ITERATE
+  │     Identificar dimensões com score mais baixo
+  │     ├─ Testability baixa? → Adicionar testes na próxima iteração
+  │     ├─ Completeness baixa? → Tratar edge cases
+  │     ├─ Pattern Fidelity baixa? → Re-ler referências (partial Research re-entry)
+  │     ├─ Architectural Fit baixa? → Refatorar integração
+  │     └─ Simplicity baixa? → Simplificar, remover abstrações
+  │     Update progress.md com gaps
+  │
+  ├─ 7. GUARDRAIL CHECK
+  │     ├─ iteration_count ≥ 15? → EVOLUTION_TIMEOUT: stop, log gaps
+  │     ├─ consecutive_discards ≥ 5? → G11: re-evaluate strategy entirely
+  │     ├─ attempt_count ≥ 3 for same idea? → G6: try different approach
   │     ├─ experiment_count ≥ 200? → BUDGET_EXCEEDED: stop
-  │     └─ OK → continue
+  │     └─ OK → continue loop (back to step 1)
   │
-  ├─ 7. STOP_IMMEDIATELY CHECK
-  │     ├─ harness SHA mismatch? → STOP
-  │     ├─ API key patterns in staged files? → STOP
-  │     ├─ tests_passed dropped >50%? → STOP
-  │     ├─ disk < 1GB? → STOP
-  │     └─ OK → continue
-  │
-  └─ 8. GARBAGE COLLECTION (every 10 keeps)
-        ├─ Update QUALITY_SCORE.md with current per-crate metrics
-        ├─ Trim progress.md (keep last 20 entries)
-        └─ Commit: "maintenance: update quality dashboard"
+  └─ 8. STOP_IMMEDIATELY CHECK
+        ├─ Harness SHA mismatch? → STOP
+        ├─ API key patterns in staged files? → STOP
+        ├─ tests_passed dropped >50%? → STOP
+        ├─ disk < 1GB? → STOP
+        ├─ About to modify referencias/? → STOP
+        └─ OK → continue
 ```
 
-**Invariantes**:
-- Cada iteração produz exatamente 1 commit (keep) ou 0 commits (discard)
-- Feature_list.json updates são incluídos no mesmo commit do experimento
-- O score nunca regride entre iterações mantidas
-- Todo experimento é logado
-- Reverts usam SHA capturado antes do commit (não HEAD~1)
-
----
-
-## 3. Phase Transition Flow
-
-Transição automática entre fases baseada em métricas.
-
-```
-CHECK PHASE
-  │
-  ├─ L1 < 95?
-  │   └─ YES → STABILIZE
-  │       Priority: compile errors → warnings → failing tests → test count
-  │       Exit: L1 ≥ 95
-  │
-  ├─ doc_artifacts < 5/5?
-  │   └─ YES → SCAFFOLD
-  │       Priority: clippy.toml → AGENTS.md → QUALITY_RULES.md
-  │                 → QUALITY_SCORE.md → structural_hygiene.rs
-  │       Exit: doc_artifacts = 5/5
-  │
-  ├─ L2 < 60?
-  │   └─ YES → FORTIFY
-  │       Priority: boundary tests → structural tests → clippy fixes
-  │                 → unwrap removal → dead code removal
-  │       Work order: leaf crates first (Level 8 → Level 0)
-  │       Exit: L2 ≥ 60
-  │
-  ├─ Score still improving? (last 5 experiments had at least one positive delta)
-  │   └─ YES → POLISH
-  │       Focus: remaining unwraps, deeper tests, complex clippy fixes
-  │       Exit: 5+ experiments with no improvement
-  │
-  └─ NO → MAINTAIN
-      Focus: garbage collection, dashboard updates, opportunity scan
-      Exit: human interruption or budget exceeded (200 experiments)
-```
+**Invariantes:**
+- Cada iteração produz exatamente 1 commit (keep) ou 0 commits (discard hygiene) ou 1 commit avaliado por SOTA (keep + assessment)
+- Hygiene score nunca regride entre iterações mantidas
+- SOTA assessment é registrado apenas para iterações que passaram o hygiene check
+- Todo descarte é classificado com failure code
+- Reverts usam SHA capturado antes do commit
+- SOTA assessment cita evidência de referências (G18)
 
 ---
 
 ## 4. Failure Recovery Flow
 
-Ações específicas por tipo de falha. Baseado na failure taxonomy dos NLAHs.
+Ações específicas por tipo de falha.
 
 ```
 FAILURE DETECTED
   │
   ├─ COMPILE_ERROR
   │   attempt < 3?
-  │   ├─ YES → Read error message. Fix the specific error. Retry.
-  │   └─ NO  → Revert. Skip this feature. Log "COMPILE_ERROR × 3".
+  │   ├─ YES → Read error message. Fix. Retry.
+  │   └─ NO  → Revert. Try different approach or different pattern.
   │
   ├─ TEST_REGRESSION (tests_failed > 0)
   │   └─ Revert immediately. Do NOT retry same approach.
-  │      Try fundamentally different approach or different feature.
+  │      Analyze: did the change break existing behavior?
   │
-  ├─ CLIPPY_REGRESSION (clippy_warnings increased)
-  │   └─ Read clippy message. Usually a simple fix.
-  │      Fix and re-commit. If can't fix, revert.
+  ├─ CLIPPY_REGRESSION
+  │   └─ Read clippy message. Fix and re-commit.
   │
-  ├─ UNWRAP_REGRESSION (unwrap_count increased)
+  ├─ UNWRAP_REGRESSION
   │   └─ Revert. Check diff for accidental .unwrap() additions.
   │
-  ├─ SCORE_PLATEAU (3+ experiments, delta ≈ 0)
-  │   └─ Switch to different crate or feature.
-  │      If all features in current phase tried → advance phase.
-  │      Exception: MAINTAIN phase — plateau is normal.
+  ├─ SCORE_PLATEAU (hygiene score didn't change)
+  │   └─ Expected during evolution. This is NOT a problem.
+  │      Focus on SOTA rubric improvement instead.
+  │      Only action if ALL dimensions also plateaued.
   │
-  ├─ SCORE_DROP (score decreased)
+  ├─ SCORE_DROP (hygiene score decreased)
   │   └─ Revert. Analyze which metric dropped.
-  │      Use metric breakdown to understand what went wrong.
   │
   ├─ EVAL_CRASH (eval produced no output)
   │   └─ Read last 50 lines of eval.log.
-  │      Usually: timeout, build OOM, or cargo lock.
   │      Wait 30s, retry once. If still crashes, revert.
   │
-  ├─ CONTEXT_EXHAUSTION (context window full)
-  │   └─ Commit all progress. Update progress.md with:
-  │      - Current score and phase
-  │      - What was being worked on
-  │      - What to try next
-  │      Signal for fresh session.
-  │      NOTE: If progress.md write is incomplete, the next session
-  │      will detect this and run a fresh baseline eval.
+  ├─ SOTA_REGRESSION (SOTA rubric dropped vs previous)
+  │   └─ Analyze: which dimension dropped and why?
+  │      Re-read references for that specific dimension.
+  │      The hygiene-kept commit stays — SOTA regression doesn't trigger revert.
+  │      But the next iteration should specifically address the gap.
   │
-  └─ BUDGET_EXCEEDED (200 experiments or operator stop)
+  ├─ REFERENCE_MISMATCH (pattern doesn't translate to Rust/theo)
+  │   └─ Document why in evolution_research.md.
+  │      Try different pattern from different reference repo.
+  │      If all references fail for this aspect, note it as a known gap.
+  │
+  ├─ SCOPE_CREEP (> 200 lines or wrong subsystem)
+  │   └─ Revert. Decompose into smaller changes.
+  │      Each iteration = one logical change.
+  │
+  ├─ EVOLUTION_TIMEOUT (15 iterations without convergence)
+  │   └─ Stop loop. Log final assessment with remaining gaps.
+  │      Update progress.md. Wait for human guidance.
+  │
+  ├─ CONTEXT_EXHAUSTION (context window full)
+  │   └─ Commit all progress. Update progress.md and assessment.
+  │      Signal for fresh session. Next session resumes from assessment.
+  │
+  └─ BUDGET_EXCEEDED (200 experiments)
       └─ Stop loop. Log final state. Update progress.md.
-         Do NOT start new experiments.
 ```
 
 ---
 
 ## 5. Crate Work Order Flow
 
-Ordem de trabalho por crate, baseada no grafo de dependências. Leaf-first = crates com **menos dependentes** primeiro, minimizando rebuild cascading.
+Ordem de trabalho por crate, baseada no grafo de dependências.
 
 ```
 DEPENDENCY GRAPH (leaf-first = fewest dependents first):
 
-Level 8 (leaves, no dependents): theo-cli, theo-marklive
-Level 7:                         theo-application
-Level 6:                         theo-agent-runtime
-Level 5:                         theo-tooling, theo-infra-llm, theo-infra-auth
-Level 4:                         theo-engine-retrieval
-Level 3:                         theo-engine-graph
-Level 2:                         theo-engine-parser
-Level 1:                         theo-governance, theo-api-contracts
-Level 0 (root, most depended-on): theo-domain
+Level 8 (leaves): theo-cli, theo-marklive
+Level 7:          theo-application
+Level 6:          theo-agent-runtime
+Level 5:          theo-tooling, theo-infra-llm, theo-infra-auth
+Level 4:          theo-engine-retrieval
+Level 3:          theo-engine-graph
+Level 2:          theo-engine-parser
+Level 1:          theo-governance, theo-api-contracts
+Level 0 (root):   theo-domain (CAUTION: rebuilds everything)
 
-RULE: Start with the highest-level (leaf-most) crate.
-      Work inward toward theo-domain only when outer crates are done.
-REASON: Changes to leaf crates (Level 8) trigger minimal rebuilds.
-        Changes to theo-domain (Level 0) rebuild EVERYTHING.
+RULE: For hygiene work, start with leaves.
+EXCEPTION: For evolution, start with the crate targeted by the prompt.
+           Be aware of rebuild costs for Level 0-2 crates.
 ```
 
 ---
 
 ## Referências
 
-- **Bootstrap sequence**: Anthropic (Young, 2025) — "run through a series of steps to get its bearings"
-- **Incremental progress**: Anthropic (Young, 2025) — "work on only one feature at a time"
-- **Garbage collection**: OpenAI (Lopopolo, 2026) — "recurring cleanup process on regular cadence"
-- **Failure taxonomy**: NLAHs (Pan et al., 2026) — "named failure modes that drive recovery"
-- **Leaf-first**: theo-architecture.md — "changes to theo-domain rebuild EVERYTHING"
-- **Phase strategy**: Karpathy autoresearch — monotonic improvement with keep/discard
+- **Bootstrap sequence**: Anthropic (Young, 2025) — fixed orientation sequence per session
+- **Research-first**: Karpathy autoresearch — analyze results before proposing mutations
+- **Dual evaluation**: ProjDevBench (Lu et al., 2026) — execution + code review scoring
+- **Failure taxonomy**: NLAHs (Pan et al., 2026) — named failure modes drive recovery
+- **Leaf-first**: theo-architecture.md — minimize rebuild cascading
+- **Evidence-grounded assessment**: VeRO (Ursekar et al., 2026) — per-sample scores with traces

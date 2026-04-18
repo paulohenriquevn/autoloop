@@ -114,6 +114,43 @@ O agente deve parar após 200 experimentos por sessão ou quando o operador inte
 
 ---
 
+## Camada 4 — Evolution-Specific
+
+Regras adicionais para o evolution loop. Complementam as camadas anteriores.
+
+### G16: Referências Read-Only
+Os repos em `<THEO_CODE_DIR>/referencias/` são **somente leitura**. O agente pode ler qualquer arquivo para extrair padrões, mas **nunca** modifica, cria ou deleta arquivos nos repos de referência.
+**Enforcement:** STOP_IMMEDIATELY check no evolution loop. `git add` não inclui `referencias/`.
+
+### G17: Cap de Iterações por Prompt
+Cada prompt de evolução tem no máximo **15 iterações**. Se o agente não convergiu (SOTA média ≥ 2.5) após 15 iterações, classifica como `EVOLUTION_TIMEOUT`, loga o assessment final com gaps restantes, e aguarda orientação humana.
+**Enforcement:** Contagem de iterações no evolution_log.jsonl.
+
+### G18: Assessment Evidence-Grounded
+Toda pontuação na SOTA rubric **deve** citar evidência específica dos repos de referência. O agente deve indicar:
+- Qual padrão foi comparado
+- De qual repo e arquivo veio
+- O que foi aplicado vs o que falta
+
+Pontuação sem citação = pontuação inválida. Se o agente não consultou referências para uma dimensão, a pontuação dessa dimensão é 0 (None).
+**Enforcement:** Template obrigatório em `evolution_assessment.md` (ver `sota-rubric.md`).
+
+### G19: Piso de Hygiene Absoluto
+O score de hygiene (L1+L2)/2 é um **piso absoluto**. Mesmo uma implementação brilhante que pontuaria SOTA=3 em todas as dimensões é revertida se o score de hygiene cair. Hygiene primeiro, evolução segundo.
+
+Isso garante que o agente nunca degrada a base de código em nome de "melhorar a feature". A qualidade estrutural é inegociável.
+**Enforcement:** Hygiene check obrigatório antes de SOTA evaluation no evolution loop.
+
+### G20: Anti-Astronautics
+Novas abstrações (traits, structs, módulos) são permitidas **apenas** quando:
+1. O padrão de referência exige explicitamente essa abstração, E
+2. A dimensão Simplicity do SOTA rubric pontua ≥ 2
+
+Se o agente está criando abstrações que a referência não usa, ou se a Simplicity cai abaixo de 2, a abstração é desnecessária e deve ser removida.
+**Enforcement:** Simplicity check no SOTA assessment.
+
+---
+
 ## Referências
 
 - **Defense-in-depth**: OpenDev (Bui, 2026) — 5 camadas independentes de segurança

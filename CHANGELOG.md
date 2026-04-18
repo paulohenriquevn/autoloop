@@ -6,6 +6,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/) + [Semantic Versioning]
 ## [Unreleased]
 
 ### Added
+- `reference-catalog.md` — Catálogo dos 8 repos de referência indexados por subsistema do theo-code, com key files e lookup table (#14)
+- `sota-rubric.md` — Rubrica SOTA de 5 dimensões × 4 níveis (Pattern Fidelity, Architectural Fit, Completeness, Testability, Simplicity) com exemplos concretos e template de assessment (#15)
+- Guardrails G16-G20: referências read-only, cap de 15 iterações por prompt, evidence-grounded assessment, hygiene floor absoluto, anti-astronautics (#16)
+- Seção "SOTA Quality Rubric" em `metrics.md` definindo a relação entre hygiene score (piso) e SOTA rubric (métrica primária) (#17)
+- Verificação de `referencias/` no `theo-init.sh` com contagem e listagem de repos (#18)
+- Template de `evolution_prompt.md` criado automaticamente pelo `theo-init.sh` (#19)
+- `evolution_log.jsonl` no `.gitignore` e inicializado pelo `theo-init.sh` (#20)
+
+### Changed
+- `theo-program.md` — Reescrito completamente: de hygiene loop (feature_list.json + score ratchet) para evolution loop (prompt → research referências → implement → hygiene check → SOTA evaluate → iterate até convergência). Novo bootstrap sequence com 10 passos. Reference Integration Protocol com lookup table. Evolution loop de 6 passos. SOTA rubric como métrica primária. 4 novos failure codes (SOTA_REGRESSION, REFERENCE_MISMATCH, SCOPE_CREEP, EVOLUTION_TIMEOUT). Branch naming de `autoresearch/*` para `evolution/*` (#21)
+- `flows.md` — Reescrito: 5 fluxos antigos (Bootstrap, Experiment Loop, Phase Transition, Failure Recovery, Crate Work Order) substituídos por 5 novos fluxos (Session Bootstrap com evolution_prompt.md, Research Flow com protocolo de referências, Evolution Loop com dual evaluation, Failure Recovery expandido com novos failure codes, Crate Work Order mantido com exceção para evolution) (#22)
+- `guardrails.md` — Adicionada Camada 4 (Evolution-Specific) com 5 novos guardrails mantendo todas as 3 camadas anteriores intactas (#23)
+- `metrics.md` — Adicionada seção 4 "SOTA Quality Rubric" com definição das 5 dimensões, fórmula de convergência, relação com hygiene score, e notas sobre reliability da auto-avaliação (#24)
+- `theo-init.sh` — Adicionada verificação de `referencias/`, criação de `evolution_prompt.md` template, `evolution_log.jsonl`, atualizado `.gitignore` com novos artifacts, messaging atualizado de "autoresearch" para "evolution loop" (#25)
+- `roadmap.md` — Reescrito: de 6 fases fixas (STABILIZE→MAINTAIN) para modelo prompt-driven com ciclo de vida de prompts, tipos de prompt suportados, comparação hygiene vs evolution loop (#26)
+- `README.md` — Reescrito: reflete o novo sistema de evolução com seções sobre SOTA rubric, reference repos, operator guide para evolution assessment, quick start atualizado (#27)
+
+## [1.0.0] - 2026-04-17
+
+### Added
 - `guardrails.md` — 15 guardrails em 3 camadas: limites imutáveis, circuit breakers, observabilidade (#1)
 - `metrics.md` — Métricas de produto (score dual-layer), processo (velocity, success rate) e harness (coverage) (#2)
 - `flows.md` — 5 fluxos operacionais: bootstrap, experiment loop, phase transition, failure recovery, crate work order (#3)
