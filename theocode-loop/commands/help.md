@@ -17,13 +17,13 @@ A Claude Code plugin that runs an autonomous evolution pipeline for theo-code. Y
 
 ## The 5 Phases
 
-| Phase | Name | What happens | Max iterations |
-|-------|------|-------------|---------------|
-| 1 | RESEARCH | Read reference repos, extract SOTA patterns | 2 |
-| 2 | IMPLEMENT | Apply patterns incrementally (max 200 lines/iter) | 5 |
-| 3 | HYGIENE_CHECK | Run theo-evaluate.sh, verify score didn't drop | 1 |
-| 4 | EVALUATE | Score against 5-dimension SOTA rubric | 1 |
-| 5 | CONVERGED | Signal completion | 1 |
+| Phase | Name | What happens | Agents involved | Max iter |
+|-------|------|-------------|-----------------|----------|
+| 1 | RESEARCH | Map current state via domain agents + extract SOTA from refs | `researcher` + `graphctx-expert`/`retrieval-engineer`/domain agent | 2 |
+| 2 | IMPLEMENT | Apply patterns, validate with architect, code review before commit | `chief-architect` + `code-reviewer` | 5 |
+| 3 | HYGIENE_CHECK | Run eval harness + boundary validation + failure analysis | `hygiene-checker` + `arch-validator` + `test-runner` | 1 |
+| 4 | EVALUATE | SOTA rubric + code quality + architecture assessment | `quality-gate` + `code-reviewer` + `arch-validator` | 1 |
+| 5 | CONVERGED | Signal completion | — | 1 |
 
 Phases 2→3→4 cycle until SOTA average >= 2.5 or max iterations reached.
 
@@ -81,9 +81,25 @@ The plugin uses 8 reference repos in `theo-code/referencias/` for SOTA compariso
 
 ## Agents
 
+The evolution loop coordinates two agent fleets working together:
+
+### Autoloop Agents (loop mechanics)
 | Agent | Role |
 |-------|------|
-| chief-evolver | Orchestrates the full loop |
-| researcher | Reads reference repos (read-only) |
-| quality-gate | SOTA rubric evaluation (keep/discard) |
-| hygiene-checker | Runs theo-evaluate.sh |
+| chief-evolver | Orchestrates the full loop, coordinates all agents |
+| researcher | Reads reference repos + consults domain agents (read-only) |
+| quality-gate | SOTA rubric evaluation with code-reviewer/arch-validator input |
+| hygiene-checker | Runs theo-evaluate.sh + arch-validator + test-runner |
+
+### Theo-code Domain Agents (specialist knowledge)
+| Agent | When consulted |
+|-------|---------------|
+| chief-architect | IMPLEMENT — validate plan against architecture |
+| code-reviewer | IMPLEMENT — review before commit; EVALUATE — Rust quality input |
+| arch-validator | HYGIENE_CHECK + EVALUATE — boundary validation |
+| test-runner | HYGIENE_CHECK — failure root cause analysis |
+| graphctx-expert | RESEARCH — when evolving graph/parser/retrieval |
+| retrieval-engineer | RESEARCH — when evolving search/ranking |
+| frontend-dev | RESEARCH/IMPLEMENT — when evolving UI |
+| wiki-expert | RESEARCH/IMPLEMENT — when evolving wiki |
+| research-agent | RESEARCH — deep web research when refs insufficient |

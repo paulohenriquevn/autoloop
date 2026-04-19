@@ -5,6 +5,15 @@ Formato: [Keep a Changelog](https://keepachangelog.com/) + [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed
+- Agentes autoloop integrados com agentes domain do theo-code — o evolution loop agora coordena duas frotas de agentes trabalhando em conjunto (#28)
+- `chief-evolver.md` — Reescrito para delegar a agentes theo-code em cada fase: `graphctx-expert`/`retrieval-engineer` na pesquisa, `chief-architect` para validar plano, `code-reviewer` antes de commit, `arch-validator`+`test-runner` na higiene. Inclui subsystem-to-agent mapping table e protocolo de coordenação paralela (#29)
+- `researcher.md` — Modelo de pesquisa de duas fontes: consulta agente domain primeiro (estado atual) + referências externas depois. Delta analysis (current vs SOTA) como output principal (#30)
+- `hygiene-checker.md` — Verificação em 3 camadas: score (theo-evaluate.sh) + boundaries (`arch-validator`) + failure analysis (`test-runner`). Root cause analysis combinada de múltiplos agentes (#31)
+- `quality-gate.md` — Avaliação multi-agente: incorpora feedback de `code-reviewer`, `arch-validator` e domain agents como evidência nas 5 dimensões. Novas anti-inflation rules baseadas em output de agentes (#32)
+- `evolution-loop.md` — Adicionada seção AGENT COORDINATION com instruções de quando usar cada agente theo-code por fase (#33)
+- `help.md` — Tabela de fases atualizada com agentes envolvidos. Nova seção "Theo-code Domain Agents" listando 9 agentes consultados e quando (#34)
+
 ### Added
 - `reference-catalog.md` — Catálogo dos 8 repos de referência indexados por subsistema do theo-code, com key files e lookup table (#14)
 - `sota-rubric.md` — Rubrica SOTA de 5 dimensões × 4 níveis (Pattern Fidelity, Architectural Fit, Completeness, Testability, Simplicity) com exemplos concretos e template de assessment (#15)
