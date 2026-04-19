@@ -33,10 +33,18 @@ claude --plugin-dir /path/to/theocode-loop
 
 | Command | Description |
 |---------|-------------|
-| `/theocode-loop:evolution-loop PROMPT` | Start evolution loop |
+| `/theocode-loop:evolution-loop PROMPT [OPTIONS]` | Start evolution loop |
 | `/theocode-loop:evolution-status` | View current status |
 | `/theocode-loop:cancel-evolution` | Cancel active loop |
 | `/theocode-loop:help` | Show documentation |
+
+### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--max-iterations N` | `15` | Max global iterations |
+| `--theo-code-dir PATH` | auto-detected | Path to theo-code workspace |
+| `--completion-promise TEXT` | `"EVOLUTION COMPLETE"` | Promise text to signal completion |
 
 ## SOTA Quality Rubric
 

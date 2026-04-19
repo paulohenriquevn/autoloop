@@ -30,6 +30,10 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --completion-promise)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --completion-promise requires a text argument" >&2
+        exit 1
+      fi
       COMPLETION_PROMISE="$2"
       shift 2
       ;;
