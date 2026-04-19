@@ -54,6 +54,7 @@ Start an evolution loop.
 **Options:**
 - `--max-iterations <n>` — Max global iterations (default: 15)
 - `--theo-code-dir <path>` — Path to theo-code (auto-detected if in workspace)
+- `--completion-promise <text>` — Custom promise (default: "EVOLUTION COMPLETE")
 
 ### /theocode-loop:evolution-status
 
